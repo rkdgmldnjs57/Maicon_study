@@ -10,7 +10,7 @@ class Image:
         
     def Process(self):
         imgray = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY) #Convert to Gray Scale
-        ret, thresh = cv2.threshold(imgray,150,255,cv2.THRESH_BINARY_INV) #Get Threshold
+        ret, thresh = cv2.threshold(imgray,100,255,cv2.THRESH_BINARY_INV) #Get Threshold
 
         self.contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE) #Get contour ####CHAIN_APPROX_SIMPLE로 바꿔야함
         
@@ -26,7 +26,7 @@ class Image:
             self.prev_cX = self.contourCenterX
             if self.getContourCenter(self.MainContour) != 0:
                 self.contourCenterX = self.getContourCenter(self.MainContour)[0]
-                if abs(self.prev_cX-self.contourCenterX) > 5: #이전 중심과 x좌표 차이가 5보다 크면, 5보다 작은놈 있으면 대체.
+                if abs(self.prev_cX-self.contourCenterX) > 50: #이전 중심과 x좌표 차이가 5보다 크면, 5보다 작은놈 있으면 대체.
                     self.correctMainContour(self.prev_cX)
             else:
                 self.contourCenterX = 0
@@ -71,22 +71,7 @@ class Image:
             for i in range(len(self.contours)):
                 if self.getContourCenter(self.contours[i]) != 0:
                     tmp_cx = self.getContourCenter(self.contours[i])[0]
-                    if self.Aprox(tmp_cx, prev_cx, 5) == True:
+                    if self.Aprox(tmp_cx, prev_cx, 50) == True:
                         self.MainContour = self.contours[i]
                         if self.getContourCenter(self.MainContour) != 0:
                             self.contourCenterX = self.getContourCenter(self.MainContour)[0]
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            
-                            

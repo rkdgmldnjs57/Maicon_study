@@ -43,15 +43,15 @@ def warpping(image):
     # roi_source = np.float32([[86, 150], [554, 150], [640, 400], [0, 400]])
     # roi_source = np.float32([[120, 0], [520, 0], [520, 480], [120, 480]])
     # source = np.float32([[200, 210], [20,480], [420,210], [620, 480]])
-    source = np.float32([[0, 0], [0, 480], [480, 0], [480, 480]])
-    destination = np.float32([[0, 0], [0, 480], [480, 0], [480, 480]])
+    source = np.float32([[230, 0], [0, 480], [440, 0], [640, 480]])
+    destination = np.float32([[0, 0], [0, 480], [640, 0], [640, 480]])
     
     M = cv2.getPerspectiveTransform(source, destination)
     Minv = cv2.getPerspectiveTransform(destination, source)
     
     # image = region_of_interest(image, [roi_source])
     
-    warp_image = cv2.warpPerspective(image, M, (480, 480), flags=cv2.INTER_LINEAR)
+    warp_image = cv2.warpPerspective(image, M, (640, 480), flags=cv2.INTER_LINEAR)
     #warp_image = region_of_interest(warp_image, [roi_source])
     # cv2.rectangle(warp_image, (195, 445), (480, 480), (0, 0, 0), -1)
 
@@ -89,33 +89,35 @@ def moving_filter(queue, weights):
     result = [a * b for a, b in zip(queue, weights)]
     return sum(result)
 
-def compare_to_previous_value(queue, data, threshold, max_size):
-    if (not queue) or (len(queue) < max_size):
-        result = 80 ### 바꿔주세요, 에러 안 뜨게 하려고 임의로 넣었습니다. 
-        queue.append(data)
-    elif len(queue) == max_size:
-        last_data = queue[-1]
+# def compare_to_previous_value(queue, data, threshold, max_size):
+#     if (not queue) or (len(queue) < max_size):
+#         result = 80 ### 바꿔주세요, 에러 안 뜨게 하려고 임의로 넣었습니다. 
+#         queue.append(data)
+#     elif len(queue) == max_size:
+#         last_data = queue[-1]
 
-        for i in range(len(queue)):
-            diff = abs(data - queue[i])
-            if diff <= threshold:
-                append = True
-                break
-            else:
-                append = False
+#         for i in range(len(queue)):
+#             diff = abs(data - queue[i])
+#             if diff <= threshold:
+#                 append = True
+#                 break
+#             else:
+#                 append = False
 
-        if append:
-            if len(queue) == max_size:
-                queue.popleft()
-            queue.append(data)
-            result = moving_filter(queue, weights)
-        else:
-            if len(queue) == max_size:
-                queue.popleft()
-            queue.append(last_data)
-            # queue.append(sum(queue) / max_queue_size)
-            result = moving_filter(queue, weights)
-    return result
+#         if append:
+#             if len(queue) == max_size:
+#                 queue.popleft()
+#             queue.append(data)
+#             result = moving_filter(queue, weights)
+#         else:
+#             if len(queue) == max_size:
+#                 queue.popleft()
+#             queue.append(last_data)
+#             # queue.append(sum(queue) / max_queue_size)
+#             result = moving_filter(queue, weights)
+#     return result
+
+    
 
 
 class lane_detect():
@@ -132,19 +134,30 @@ class lane_detect():
     def camera_callback(self, data):
         self.image = data
         self.lane_detect()
+
+    def find_median_of_peak(self, histogram):
+        # Find the indices of the highest peak in the histogram
+        peak_threshold = np.max(histogram) * 0.7  # Consider peaks above 50% of max value
+        peak_indices = np.where(histogram >= peak_threshold)[0]
+        
+        # Calculate the median of the peak columns
+        median_peak = np.median(peak_indices)
+        
+        return int(median_peak)
         
     def high_level_detect(self, hough_img):
 
-        nwindows = 10       # window 개수
-        margin = 50         # window 가로 길이
-        minpix = 30          # 차선 인식을 판정하는 최소 픽셀 수
-        lane_bin_th = 225
-       
+        nwindows = 20       # window 개수
+        margin = 150         # window 가로 길이
+        minpix = 50          # 차선 인식을 판정하는 최소 픽셀 수
+
+
         histogram = np.sum(hough_img[hough_img.shape[0]//2:,:],   axis=0)
         
         # midpoint = np.int32(histogram.shape[0]/2)
-    
-        midx_current = np.argmax(histogram[:])
+        midx_current = self.find_median_of_peak(histogram)
+        print(midx_current)
+        #midx_current = np.argmax(histogram[:])
 
         # print("left_cur : %.3f, right_cur : %.3f" % (leftx_current, rightx_current))
 
@@ -178,12 +191,13 @@ class lane_detect():
             win_xl = midx_current - margin
             win_xh = midx_current + margin
 
+            cv2.circle(out_img, (midx_current, int((win_yl+win_yh)/2)), 3, (255, 255, 255), 3)
             # out image에 bounding box 시각화
-            cv2.rectangle(out_img,(win_xl,win_yl),(win_xh,    win_yh),    (0,255,0), 2) 
+            cv2.rectangle(out_img,(win_xl,win_yl),(win_xh,win_yh),(0,255,0), 2) 
 
             # 흰점의 픽셀들 중에 window안에 들어오는 픽셀인지 여부를 판단하여 
             # good_left_inds와 good_right_inds에 담는다.
-            good_inds = ((nz[0] >= win_yl)&(nz[0] < win_yh)&   (nz[1] >= win_xl)&(nz[1] < win_xh)).nonzero()[0]
+            good_inds = ((nz[0] >= win_yl)&(nz[0] < win_yh)&(nz[1] >= win_xl)&(nz[1] < win_xh)).nonzero()[0]
             
             mid_lane_inds.append(good_inds)
 
@@ -231,11 +245,11 @@ class lane_detect():
         
         grayscale = cv2.cvtColor(w_f_img, cv2.COLOR_BGR2GRAY)
         cv2.imshow("grayscale", grayscale)
-        ret, thresh = cv2.threshold(grayscale, 120, 255, cv2.THRESH_BINARY) #170, 255
+        ret, thresh = cv2.threshold(grayscale, 120, 255, cv2.THRESH_BINARY_INV) #170, 255
         cv2.imshow("thresh", thresh)
         
-        canny_img = cv2.Canny(thresh, 10, 100)
-        cv2.imshow("canny", canny_img )
+        # canny_img = cv2.Canny(thresh, 10, 100)
+        # cv2.imshow("canny", canny_img )
 
         #lines = cv2.HoughLines(canny_img, 1, np.pi/180, 80, None, 0, 0)
         
@@ -268,7 +282,7 @@ class lane_detect():
         # #cv2.moveWindow('Hough', 700, 0)
         # cv2.imshow('Hough', hough_img)
         
-        fit, avg = self.high_level_detect(canny_img)
+        fit, avg = self.high_level_detect(thresh)
         
         fit = np.polyfit(np.array(y),np.array(x),1)
         print(fit)

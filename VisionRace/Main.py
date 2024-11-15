@@ -13,7 +13,7 @@ for q in range(N_SLICES):
     Images.append(Image())
 
 
-capture = cv2.VideoCapture("../../Video/omo2.mp4")
+capture = cv2.VideoCapture("../../Video/omo1.mp4")
 
 while cv2.waitKey(33) < 0:
 
@@ -22,7 +22,11 @@ while cv2.waitKey(33) < 0:
 
     # array = np.frombuffer(data, dtype='uint8')
     # img = cv2.imdecode(array, 1)
-    img = frame[250:, :]
+
+    img, minv = warpping(frame)
+    img = cv2.GaussianBlur(img, (7, 7), 5)
+
+    #img = img[250:, :]
     direction = 0
     img = RemoveBackground(img, True)
     if img is not None:
@@ -35,7 +39,6 @@ while cv2.waitKey(33) < 0:
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-        
 # Clean up the connection
 capture.release()
 cv2.destroyAllWindows()
