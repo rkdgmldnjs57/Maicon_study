@@ -1,8 +1,7 @@
-import numpy as np
 import cv2
+import numpy as np
 
 class Image:
-    
     def __init__(self):
         self.image = None
         self.contourCenterX = 0
@@ -75,3 +74,108 @@ class Image:
                         self.MainContour = self.contours[i]
                         if self.getContourCenter(self.MainContour) != 0:
                             self.contourCenterX = self.getContourCenter(self.MainContour)[0]
+
+
+def SlicePart(im, images, slices):
+    height, width = im.shape[:2]
+    sl = int(height/slices)
+    
+    for i in range(slices):
+        part = sl*i
+        crop_img = im[part:part+sl, :]
+        images[i].image = crop_img
+        images[i].Process()
+    
+def RepackImages(images):
+    img = images[0].image
+    for i in range(len(images)):
+        if i == 0:
+            img = np.concatenate((img, images[1].image), axis=0)
+        if i > 1:
+            img = np.concatenate((img, images[i].image), axis=0)
+            
+    return img
+
+def Center(moments):
+    if moments["m00"] == 0:
+        return 0
+        
+    x = int(moments["m10"]/moments["m00"])
+    y = int(moments["m01"]/moments["m00"])
+
+    return x, y
+    
+def RemoveBackground(image, b):
+    up = 100
+    # create NumPy arrays from the boundaries
+    lower = np.array([0, 0, 0], dtype = "uint8")
+    upper = np.array([up, up, up], dtype = "uint8")
+    #----------------COLOR SELECTION-------------- (Remove any area that is whiter than 'upper')
+    if b == True:
+        mask = cv2.inRange(image, lower, upper)
+        image = cv2.bitwise_and(image, image, mask = mask)
+        image = cv2.bitwise_not(image, image, mask = mask)
+        image = (255-image)
+        return image
+    else:
+        return image
+    #////////////////COLOR SELECTION/////////////
+
+def warpping(image):
+    """
+        차선을 BEV로 변환하는 함수
+        
+        Return
+        1) _image : BEV result image
+        2) minv : inverse matrix of BEV conversion matrix
+    """
+
+    # roi_source = np.float32([[86, 150], [554, 150], [640, 400], [0, 400]])
+    # roi_source = np.float32([[120, 0], [520, 0], [520, 480], [120, 480]])
+    # source = np.float32([[200, 210], [20,480], [420,210], [620, 480]])
+    source = np.float32([[230, 0], [0, 480], [440, 0], [640, 480]])
+    destination = np.float32([[0, 0], [0, 480], [640, 0], [640, 480]])
+    
+    M = cv2.getPerspectiveTransform(source, destination)
+    Minv = cv2.getPerspectiveTransform(destination, source)
+    
+    # image = region_of_interest(image, [roi_source])
+    
+    warp_image = cv2.warpPerspective(image, M, (640, 480), flags=cv2.INTER_LINEAR)
+    #warp_image = region_of_interest(warp_image, [roi_source])
+    # cv2.rectangle(warp_image, (195, 445), (480, 480), (0, 0, 0), -1)
+
+    return warp_image, Minv
+
+
+
+font = cv2.FONT_HERSHEY_SIMPLEX
+direction = 0
+Images=[]
+N_SLICES = 4
+
+for q in range(N_SLICES):
+    Images.append(Image())
+
+capture = cv2.VideoCapture("../Video/omo1.mp4")
+
+while cv2.waitKey(33) < 0:
+    ret, frame = capture.read()
+    cv2.imshow("original", frame)
+
+    img, minv = warpping(frame)
+    img = cv2.GaussianBlur(img, (7, 7), 5)
+
+    direction = 0
+    img = RemoveBackground(img, True)
+    if img is not None:
+        SlicePart(img, Images, N_SLICES)
+        for i in range(N_SLICES):
+            direction += Images[i].dir
+        
+        fm = RepackImages(Images)
+        cv2.imshow("Vision Race", fm)
+
+# Clean up the connection
+capture.release()
+cv2.destroyAllWindows()

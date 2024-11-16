@@ -16,21 +16,6 @@ distance_R_queue = deque([], maxlen=5)
 theta_L_queue = deque([], maxlen=5)
 theta_R_queue = deque([], maxlen=5)
 
-def region_of_interest(img, vertices, color3=(255,255,255), color1=255):
-
-    mask = np.zeros_like(img) 
-    
-    if len(img.shape) > 2:
-        color = color3
-    else: 
-        color = color1
-
-    vertices = np.int32(vertices)
-    cv2.fillPoly(mask, vertices, color)
-    
-    ROI_image = cv2.bitwise_and(img, mask)
-    return ROI_image
-
 def warpping(image):
     """
         차선을 BEV로 변환하는 함수
@@ -39,49 +24,25 @@ def warpping(image):
         1) _image : BEV result image
         2) minv : inverse matrix of BEV conversion matrix
     """
-
-    # roi_source = np.float32([[86, 150], [554, 150], [640, 400], [0, 400]])
-    # roi_source = np.float32([[120, 0], [520, 0], [520, 480], [120, 480]])
-    # source = np.float32([[200, 210], [20,480], [420,210], [620, 480]])
     source = np.float32([[230, 0], [0, 480], [440, 0], [640, 480]])
     destination = np.float32([[0, 0], [0, 480], [640, 0], [640, 480]])
     
     M = cv2.getPerspectiveTransform(source, destination)
     Minv = cv2.getPerspectiveTransform(destination, source)
     
-    # image = region_of_interest(image, [roi_source])
     
     warp_image = cv2.warpPerspective(image, M, (640, 480), flags=cv2.INTER_LINEAR)
-    #warp_image = region_of_interest(warp_image, [roi_source])
-    # cv2.rectangle(warp_image, (195, 445), (480, 480), (0, 0, 0), -1)
 
     return warp_image, Minv
 
 def color_filter(image):
     hls = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
 
-    lower = np.array([200, 0, 50])
-    upper = np.array([260, 50, 100])
-    # print(hls[240][240])
-    # lower = np.array([40, 185, 10])
-    # upper = np.array([255, 255, 255])
-
     black_lower = np.array([0, 0, 0])       # Lower bound for black (low lightness, low saturation)
     black_upper = np.array([180, 255, 50])  # Upper bound for black (black has low lightness)
 
-
-
-    # yellow_lower = np.array([0, 85, 81])
-    #yellow_lower = np.array([0, 85, 81])
-    #yellow_upper = np.array([190, 255, 255])
-    blue_lower = np.array([0, 51, 90])
-    blue_upper = np.array([255, 204, 255])
-
-    #yellow_mask = cv2.inRange(hls, yellow_lower, yellow_upper)
-    #white_mask = cv2.inRange(image, lower, upper)
-    #mask = cv2.bitwise_or(yellow_mask, white_mask)
-    black_mask = cv2.inRange(hls, black_lower, black_upper)
-    masked = cv2.bitwise_and(image, image, mask = black_mask)
+    mask = cv2.inRange(hls, black_lower, black_upper)
+    masked = cv2.bitwise_and(image, image, mask = mask)
     
     return masked
 
@@ -89,48 +50,7 @@ def moving_filter(queue, weights):
     result = [a * b for a, b in zip(queue, weights)]
     return sum(result)
 
-# def compare_to_previous_value(queue, data, threshold, max_size):
-#     if (not queue) or (len(queue) < max_size):
-#         result = 80 ### 바꿔주세요, 에러 안 뜨게 하려고 임의로 넣었습니다. 
-#         queue.append(data)
-#     elif len(queue) == max_size:
-#         last_data = queue[-1]
-
-#         for i in range(len(queue)):
-#             diff = abs(data - queue[i])
-#             if diff <= threshold:
-#                 append = True
-#                 break
-#             else:
-#                 append = False
-
-#         if append:
-#             if len(queue) == max_size:
-#                 queue.popleft()
-#             queue.append(data)
-#             result = moving_filter(queue, weights)
-#         else:
-#             if len(queue) == max_size:
-#                 queue.popleft()
-#             queue.append(last_data)
-#             # queue.append(sum(queue) / max_queue_size)
-#             result = moving_filter(queue, weights)
-#     return result
-
-    
-
-
 class lane_detect():
-    # def __init__(self):
-    #     self.bridge = CvBridge()
-    #     rospy.init_node('lane_detection_node', anonymous=False)
-    #     rospy.Subscriber('/main_camera/image_raw/compressed', CompressedImage, self.camera_callback)
-    #     self.pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
-
-    #def camera_callback(self, data):  
-        #self.image = self.bridge.compressed_imgmsg_to_cv2(data, desired_encoding="bgr8")
-        # self.lane_detect()
-    
     def camera_callback(self, data):
         self.image = data
         self.lane_detect()
@@ -146,20 +66,15 @@ class lane_detect():
         return int(median_peak)
         
     def high_level_detect(self, hough_img):
-
-        nwindows = 20       # window 개수
-        margin = 150         # window 가로 길이
+        nwindows = 15       # window 개수
+        margin = 100         # window 가로 길이
         minpix = 50          # 차선 인식을 판정하는 최소 픽셀 수
 
-
-        histogram = np.sum(hough_img[hough_img.shape[0]//2:,:],   axis=0)
+        histogram = np.sum(hough_img[hough_img.shape[0]//2:,:],axis=0) # half down of the img
         
-        # midpoint = np.int32(histogram.shape[0]/2)
         midx_current = self.find_median_of_peak(histogram)
-        print(midx_current)
+        print("1", midx_current)
         #midx_current = np.argmax(histogram[:])
-
-        # print("left_cur : %.3f, right_cur : %.3f" % (leftx_current, rightx_current))
 
         # 쌓을 window의 height 설정
         window_height = np.int32(hough_img.shape[0]/nwindows)
@@ -175,15 +90,12 @@ class lane_detect():
 
         global out_img
         out_img = np.dstack((hough_img, hough_img, hough_img))*255
-
-        cnt = 0
         
         mid_sum = 0
 
-        total_loop = 0
+        total_loop = nwindows-4
 
-        for window in range(nwindows-4):
-            
+        for window in range(total_loop):
             # bounding box 크기 설정
             win_yl = hough_img.shape[0] - (window+1)*window_height
             win_yh = hough_img.shape[0] - window*window_height
@@ -191,12 +103,9 @@ class lane_detect():
             win_xl = midx_current - margin
             win_xh = midx_current + margin
 
-            cv2.circle(out_img, (midx_current, int((win_yl+win_yh)/2)), 3, (255, 255, 255), 3)
-            # out image에 bounding box 시각화
-            cv2.rectangle(out_img,(win_xl,win_yl),(win_xh,win_yh),(0,255,0), 2) 
-
             # 흰점의 픽셀들 중에 window안에 들어오는 픽셀인지 여부를 판단하여 
             # good_left_inds와 good_right_inds에 담는다.
+            # 직사각형 안에 있는 nonzero들의 y index 저장? 
             good_inds = ((nz[0] >= win_yl)&(nz[0] < win_yh)&(nz[1] >= win_xl)&(nz[1] < win_xh)).nonzero()[0]
             
             mid_lane_inds.append(good_inds)
@@ -204,15 +113,19 @@ class lane_detect():
             # nz[1]값들 중에 good_left_inds를 index로 삼는 nz[1]들의 평균을 구해서 leftx_current를 갱신한다.
             if len(good_inds) > minpix:
                 midx_current = np.int32(np.mean(nz[1][good_inds]))
+            print("2", midx_current)
+
+
+            cv2.circle(out_img, (midx_current, int((win_yl+win_yh)/2)), 3, (255, 255, 255), 3)
+            # out image에 bounding box 시각화
+            cv2.rectangle(out_img,(win_xl,win_yl),(win_xh,win_yh),(0,255,0), 2) 
+
 
             #lx ly rx ry에 x,y좌표들의 중심점들을 담아둔다.
             x.append(midx_current)
             y.append((win_yl + win_yh)/2)
 
-            # left_sum += leftx_current
             mid_sum += midx_current
-
-            total_loop += 1
 
         mid_lane_inds = np.concatenate(mid_lane_inds)
 
@@ -248,40 +161,6 @@ class lane_detect():
         ret, thresh = cv2.threshold(grayscale, 120, 255, cv2.THRESH_BINARY_INV) #170, 255
         cv2.imshow("thresh", thresh)
         
-        # canny_img = cv2.Canny(thresh, 10, 100)
-        # cv2.imshow("canny", canny_img )
-
-        #lines = cv2.HoughLines(canny_img, 1, np.pi/180, 80, None, 0, 0)
-        
-        # #hough_img = thresh.copy()
-        # #hough_img = canny_img.copy()
-        # hough_img = np.zeros((480, 480))
-        
-        # if lines is not None:
-        #     for line in lines:
-                
-        #         rho, theta = line[0]
-        #         a = np.cos(theta)
-        #         b = np.sin(theta)
-        #         x0 = a*rho
-        #         y0 = b*rho
-        #         x1 = int (x0 + 1000*(-b))
-        #         y1 = int ((y0) + 1000*(a))
-        #         x2 = int(x0 - 1000*(-b))
-        #         y2 = int(y0 - 1000*(a))
-                
-        #         slope = 90 - degrees(atan(b / a))
-            
-        #         if abs(slope) < 20:
-        #             cv2.line(hough_img, (x1, y1), (x2, y2), 0, 30)
-                
-        #         else:    
-        #             cv2.line(hough_img, (x1, y1), (x2, y2), 255, 8)
-        
-        # cv2.namedWindow('Hough')
-        # #cv2.moveWindow('Hough', 700, 0)
-        # cv2.imshow('Hough', hough_img)
-        
         fit, avg = self.high_level_detect(thresh)
         
         fit = np.polyfit(np.array(y),np.array(x),1)
@@ -307,19 +186,10 @@ class lane_detect():
         theta_err = radians(line_angle)
         lat_err = distance * cos(line_angle)
 
-        # speed = Twist()
-        # speed.linear.x = 0.1
-        # speed.angular.z = theta_err + atan(k*lat_err)
-        # self.pub.publish(speed)
-        # print(degrees(theta_err),degrees(atan(k*lat_err)))
-        # print(speed.angular.z)
-        
 
 
 if __name__ == "__main__":
     ld = lane_detect()
-    # ld.camera_callback()
-
     capture = cv2.VideoCapture("../Video/omo1.mp4")
 
     while cv2.waitKey(33) < 0:
@@ -328,7 +198,3 @@ if __name__ == "__main__":
 
     capture.release()
     cv2.destroyAllWindows()
-
-    # if not rospy.is_shutdown():
-    #     lane_detect()
-    #     rospy.spin()
